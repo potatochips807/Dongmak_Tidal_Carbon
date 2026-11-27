@@ -48,7 +48,7 @@ def render_budget(row=None):
 
     scale_end = max(item['끝'] for item in totals) or 1
     axis = alt.Scale(domain=[0, scale_end * 1.75], nice=False)
-    y = alt.Y('구분:N', sort=categories, title=None,
+    y = alt.Y('구분:N', scale=alt.Scale(domain=categories), title=None,
               axis=alt.Axis(labelFontSize=13, labelLimit=134, labelPadding=10, ticks=False, domain=False))
     bars = alt.Chart(pd.DataFrame(segments, columns=('구분', '경로', '시작', '끝', '탄소량'))).mark_bar(size=35).encode(
         y=y, x=alt.X('시작:Q', scale=axis, axis=None), x2='끝:Q',
@@ -59,9 +59,9 @@ def render_budget(row=None):
     labels = alt.Chart(pd.DataFrame(totals)).mark_text(align='left', dx=8, fontSize=14, fontWeight='bold').encode(
         y=y, x=alt.X('끝:Q', scale=axis, axis=None), text='표시값:N',
     )
-    chart = (bars + labels).properties(height=126, title=title).configure_view(strokeWidth=0)
+    chart = (labels + bars).properties(height=175, title=title).configure_view(strokeWidth=0)
     chart_summary = ' · '.join(f'{item["구분"]} {item["표시값"]}' for item in totals)
-    st.altair_chart(chart, width='stretch', alt=chart_summary)
+    st.altair_chart(chart, width='stretch', height=175, alt=chart_summary)
     if waiting_for_data:
         st.metric('가장 큰 유출 경로', '계산 대기', border=True)
     elif any(value is None for value in outgoing):

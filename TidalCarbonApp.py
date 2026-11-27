@@ -3,7 +3,7 @@ from pathlib import Path
 import streamlit as st
 
 from carbon_budget_view import render_budget
-from section_flux_view import RESULT_KEY, section_input
+from section_flux_view import RESULT_KEY, clear_result, direct_input, section_input
 
 
 st.set_page_config(page_title='동막 갯벌 탄소 수송', layout='wide')
@@ -14,8 +14,12 @@ with st.container(horizontal=True, vertical_alignment='center', gap='small'):
 
 st.title('밀물에 들어온 탄소, 썰물에 얼마나 빠져나갈까?')
 st.header('입력값')
+mode = st.segmented_control(
+    '입력 방식', ('관측 CSV 업로드', '직접 입력'), default='관측 CSV 업로드',
+    required=True, on_change=clear_result,
+)
 try:
-    calculated = section_input()
+    calculated = direct_input() if mode == '직접 입력' else section_input()
 except ValueError as error:
     st.session_state.pop(RESULT_KEY, None)
     st.error(str(error))

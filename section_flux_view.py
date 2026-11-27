@@ -6,7 +6,8 @@ from pathlib import Path
 
 import streamlit as st
 
-from section_flux import integrate_section
+from carbon_budget import budget_interval, summarize_budget
+from section_flux import DATA_KINDS, integrate_section
 from tidal_csv import calculate_observation_csv
 
 
@@ -58,3 +59,34 @@ def section_input():
         return legacy_results(payload)
     summary, _ = integrate_section(payload)
     return summary
+
+
+def direct_input():
+    with st.form('direct-carbon'):
+        intervals = []
+        for column, (heading, phase, sign) in zip(
+            st.columns(2), (('밀물', 'Flood', 1), ('썰물', 'Ebb', -1)),
+        ):
+            with column:
+                st.subheader(heading)
+                duration = st.number_input('지속 시간 (분)', min_value=1, value=None, key=f'{phase}-minutes')
+                discharge = st.number_input('평균 유량의 크기 (m³/s)', min_value=0.0, value=None, key=f'{phase}-flow')
+                concentrations = tuple(st.number_input(
+                    f'{name} 농도 (mg C/L)', min_value=0.0, value=None, key=f'{phase}-{name}',
+                ) for name in ('POC', 'DOC', 'DIC'))
+                flux = st.number_input('대기 CO₂ 플럭스 (µmol CO₂/m²/s)', value=None, key=f'{phase}-flux',
+                                       help='대기로 방출되는 값은 양수, 대기에서 흡수되는 값은 음수입니다.')
+                exchange_area = st.number_input('대기 CO₂ 교환 면적 (m²)', min_value=0.0, value=None,
+                                                key=f'{phase}-air-area')
+                intervals.append((phase, sign, duration, discharge, concentrations, flux, exchange_area))
+        data_kind = st.selectbox('자료 구분', tuple(DATA_KINDS), format_func=DATA_KINDS.__getitem__)
+        submitted = st.form_submit_button('탄소 유입·유출량 계산', type='primary')
+    if not submitted:
+        return None
+    if any(duration is None or discharge is None for _, _, duration, discharge, *_ in intervals):
+        raise ValueError('밀물과 썰물의 지속 시간과 평균 유량을 입력해 주세요.')
+    budget = summarize_budget([
+        budget_interval(phase, sign * discharge, duration * 60, concentrations, flux, exchange_area)
+        for phase, sign, duration, discharge, concentrations, flux, exchange_area in intervals
+    ])
+    return [{**budget, 'CycleId': '직접 입력', 'DataKind': data_kind}]
