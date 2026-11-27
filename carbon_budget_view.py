@@ -56,7 +56,10 @@ def render_budget(row=None):
                         legend=alt.Legend(title=None, orient='bottom', columns=2)),
         tooltip=[alt.Tooltip('경로:N'), alt.Tooltip('탄소량:Q', title='탄소량 (kg C)', format=',.6g')],
     )
-    labels = alt.Chart(pd.DataFrame(totals)).mark_text(align='left', dx=8, fontSize=14, fontWeight='bold').encode(
+    label_colors = {'fill': '#FFFFFF', 'stroke': '#172B3C', 'strokeWidth': 2} if segments else {}
+    labels = alt.Chart(pd.DataFrame(totals)).mark_text(
+        align='left', dx=8, fontSize=14, fontWeight='bold', **label_colors,
+    ).encode(
         y=y, x=alt.X('끝:Q', scale=axis, axis=None), text='표시값:N',
     )
     chart = (labels + bars).properties(height=175, title=title).configure_view(strokeWidth=0)
