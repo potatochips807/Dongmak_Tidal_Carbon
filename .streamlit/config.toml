@@ -1,0 +1,27 @@
+[server]
+enableStaticServing = true
+
+[theme]
+headingFontSizes = ["38px", "28px", "22px", "17px", "15px", "14px"]
+headingFontWeights = [400, 600, 600, 600, 600, 600]
+metricValueFontWeight = 600
+paddingTop = "3.75rem"
+
+[[theme.fontFaces]]
+family = "Gowun Dodum"
+url = "app/static/GowunDodum-Regular.woff2"
+weight = 400
+
+[theme.light]
+font = "Gowun Dodum"
+headingFont = "Gowun Dodum"
+
+[theme.dark]
+font = "Gowun Dodum"
+headingFont = "Gowun Dodum"
+
+[theme.light.sidebar]
+primaryColor = "#0D726D"
+
+[theme.dark.sidebar]
+primaryColor = "#14766F"
