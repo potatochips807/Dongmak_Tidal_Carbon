@@ -52,7 +52,7 @@ def section_input():
 
 def section_results(result):
     summary, detail = map(pd.DataFrame, result)
-    st.title('단면 POC 수송량')
+    st.title('단면 POC 순유출량')
     index = 0
     if len(summary) > 1:
         index = st.selectbox('계산 구간', range(len(summary)), format_func=lambda i: (
@@ -66,14 +66,20 @@ def section_results(result):
     cards = st.columns(3)
     cards[0].metric('갯벌 방향 유입 (kg C)', f'{row.InPocKgC:,.2f}', border=True)
     cards[1].metric('바다 방향 유출 (kg C)', f'{row.OutPocKgC:,.2f}', border=True)
-    cards[2].metric('순수송량 (kg C)', f'{row.NetPocKgC:+,.2f}', border=True,
-                    help='유입량에서 유출량을 뺍니다. 음수는 바다 방향 순유출입니다.')
-    st.caption(f'24시간 기준 순수송률 {row.NetPocKgCDay:+,.2f} kg C/day · 입력 기간의 평균 수송률을 하루 단위로 환산')
+    net_export = round(row.NetExportPocKgC, 2)
+    cards[2].metric('POC 순유출량 (kg C)', f'{net_export or 0:+,.2f}', border=True,
+                    help='유출량 − 유입량. 양수는 순유출, 음수는 순유입입니다.')
+    direction = (
+        '바다 방향 순유출' if row.NetExportPocKgC > 0 else
+        '갯벌 방향 순유입' if row.NetExportPocKgC < 0 else '유입·유출 균형'
+    )
+    daily_export = round(row.NetExportPocKgCDay, 2)
+    st.caption(f'{direction} · 24시간 환산 {daily_export or 0:+,.2f} kg C/day')
 
     unique_cycles = summary[summary.TideRegime.isin(('Spring', 'Neap'))]
     comparison = unique_cycles.groupby(['DataKind', 'AreaKind', 'TideRegime'], as_index=False).agg(
         count=('CycleId', 'size'), inflow=('InPocKgCDay', 'mean'),
-        outflow=('OutPocKgCDay', 'mean'), net=('NetPocKgCDay', 'mean'))
+        outflow=('OutPocKgCDay', 'mean'), net_export=('NetExportPocKgCDay', 'mean'))
     comparison = comparison[comparison.groupby(['DataKind', 'AreaKind']).TideRegime.transform('size') == 2]
     if not comparison.empty:
         st.subheader('대조기·소조기 비교')
@@ -83,8 +89,8 @@ def section_results(result):
         st.dataframe(comparison.round(2).rename(columns={
             'DataKind': '시계열 자료', 'AreaKind': '단면적 자료', 'TideRegime': '조석 조건',
             'count': '입력 구간 수', 'inflow': '평균 유입 (kg C/day)',
-            'outflow': '평균 유출 (kg C/day)', 'net': '평균 순수송 (kg C/day)',
-        }), hide_index=True, alt='자료 종류별 대조기와 소조기의 평균 순수송률')
+            'outflow': '평균 유출 (kg C/day)', 'net_export': '평균 순유출 (kg C/day)',
+        }), hide_index=True, alt='자료 종류별 대조기와 소조기의 평균 POC 순유출률')
         st.caption('조석 조건은 입력 CSV의 구분을 사용합니다. 비교하려면 각 CycleId에 같은 기준으로 조석 주기를 기록하세요.')
     else:
         st.caption('같은 자료 구분으로 대조기와 소조기를 모두 입력하면 두 조건의 수송량을 비교합니다.')
@@ -118,9 +124,10 @@ def section_references():
     with st.expander('단면 플럭스 계산식과 참고문헌'):
         st.latex(r'U_{perp,i} = U_i\cos(\theta_i-\theta_n),\qquad Q_i=A(\eta_i)U_{perp,i}')
         st.latex(r'F_{\mathrm{POC},i}=\frac{Q_i C_i}{1000},\qquad M_i=F_{\mathrm{POC},i}\Delta t_i')
-        st.latex(r'M_{\mathrm{net}}=\sum_i\max(M_i,0)-\sum_i\max(-M_i,0)')
+        st.latex(r'M_{\mathrm{net\ export}}=\sum_i\max(-M_i,0)-\sum_i\max(M_i,0)')
         st.write('진북 기준 유향과 갯벌 방향 법선의 차이로 수직 유속을 구합니다. 조위에 따른 침수 단면적은 입력한 표에서 선형 보간합니다.')
         st.write('각 구간을 대표하는 유속·면적·농도의 곱에 지속 시간(초)을 곱하고, 양수와 음수를 따로 적분합니다. 단면 내 수직·수평 분포는 대표값으로 근사합니다.')
+        st.caption('시간별 플럭스는 갯벌 방향이 양수입니다. 주기별 POC 순유출량은 총유출량에서 총유입량을 뺍니다.')
         st.caption('Q는 m³/s, C는 mg C/L입니다. 1 mg C/L = 0.001 kg C/m³이므로 1,000으로 나누면 F가 kg C/s, M이 kg C입니다.')
         st.markdown(
             '- **단면 유속 기반 탄소 수송** · Bogard 외(2020)는 조위별 단면적과 단면 평균 유속으로 유량을 구하고 '

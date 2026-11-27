@@ -144,8 +144,9 @@ def integrate_section(interval_csv, area_csv, landward_bearing, area_source, are
         summaries.append({
             **{key: rows[0][key] for key in ('CycleId', 'DataKind', 'TideRegime', 'LandwardBearingDeg', 'AreaKind', 'AreaSource')},
             'DurationHours': seconds / 3600,
-            'InPocKgC': inflow, 'OutPocKgC': outflow, 'NetPocKgC': net,
+            'InPocKgC': inflow, 'OutPocKgC': outflow, 'NetPocKgC': net, 'NetExportPocKgC': -net or 0.0,
             'InPocKgCDay': daily_in, 'OutPocKgCDay': daily_out, 'NetPocKgCDay': daily_net,
+            'NetExportPocKgCDay': -daily_net or 0.0,
             'DataSource': ' | '.join(dict.fromkeys(row['DataSource'] for row in rows)),
         })
         details.extend(rows)

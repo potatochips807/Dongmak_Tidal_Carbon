@@ -114,12 +114,14 @@ def run_model(payload: bytes) -> tuple[bytes, list[dict]]:
         'NetInPocKgC': 'NetInPocKgCDay',
     }
     for row in rows:
-        row.update(dict.fromkeys((*daily_fields.values(), 'DailyBasis')))
+        row.update(dict.fromkeys((*daily_fields.values(), 'DailyBasis', 'NetExportPocKgC', 'NetExportPocKgCDay')))
         if row['ModelStatus'] == 'Calculated':
             duration = float(row['FloodDurationMin']) + float(row['EbbDurationMin'])
             factor, row['DailyBasis'] = daily_scaling(duration)
             for period_key, daily_key in daily_fields.items():
                 row[daily_key] = float(row[period_key]) * factor
+            row['NetExportPocKgC'] = -float(row['NetInPocKgC']) or 0.0
+            row['NetExportPocKgCDay'] = -row['NetInPocKgCDay'] or 0.0
     return pd.DataFrame(rows).to_csv(index=False).encode('utf-8-sig'), rows
 
 
@@ -179,13 +181,12 @@ def render_result(rows: list[dict], payload: bytes) -> None:
     if row['ModelStatus'] == 'Calculated':
         flood = row['FloodInPocKgCDay']
         ebb = row['EbbOutPocKgCDay']
-        net = row['NetInPocKgCDay']
+        net_export = round(row['NetExportPocKgCDay'], 2)
         ratio = row['EbbOutFloodInRatioPct']
         show_daily_basis(float(row['FloodDurationMin']) + float(row['EbbDurationMin']), row['DailyBasis'])
-        displayed_net = round(net, 2)
-        direction = '순유입' if displayed_net > 0 else '순유출' if displayed_net < 0 else '표시 정밀도에서 균형'
-        st.metric('순수송량 (전체 유입 − 전체 유출)',
-                  f'{displayed_net or 0:+,.2f} kg C/day', border=True)
+        direction = '순유출' if net_export > 0 else '순유입' if net_export < 0 else '표시 정밀도에서 균형'
+        st.metric('POC 순유출량 (전체 유출 − 전체 유입)',
+                  f'{net_export or 0:+,.2f} kg C/day', border=True)
         st.caption(direction)
         metrics = st.columns(3)
         metrics[0].metric('밀물 유입량 (kg C/day)', f'{flood:,.2f}', border=True)
@@ -209,10 +210,10 @@ def render_result(rows: list[dict], payload: bytes) -> None:
     if len(rows) > 1:
         with st.expander('전체 단면 결과'):
             fields = ('Region', 'Station', 'CycleId', 'DataKind', 'TotalInPocKgCDay',
-                      'TotalOutPocKgCDay', 'NetInPocKgCDay', 'DailyBasis', 'ModelStatus', 'InputNotes')
+                      'TotalOutPocKgCDay', 'NetExportPocKgCDay', 'DailyBasis', 'ModelStatus', 'InputNotes')
             st.dataframe(pd.DataFrame(rows)[list(fields)].rename(columns={
                 'TotalInPocKgCDay': '총유입 (kg C/day)', 'TotalOutPocKgCDay': '총유출 (kg C/day)',
-                'NetInPocKgCDay': '순수송량 (kg C/day)',
+                'NetExportPocKgCDay': 'POC 순유출량 (kg C/day)',
             }), hide_index=True, width='stretch')
     st.download_button('결과 CSV 다운로드', payload, 'tidal-carbon-results.csv', 'text/csv', on_click='ignore')
 
@@ -242,7 +243,7 @@ if page == RESULT_PAGE:
     if section_result is not None:
         section_results(section_result)
     elif result is None:
-        st.title('단면 POC 수송량')
+        st.title('단면 POC 순유출량')
         st.info('입력값 메뉴에서 먼저 탄소 수송량을 계산하세요.')
     else:
         result_csv, result_rows = result
