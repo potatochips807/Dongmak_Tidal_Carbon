@@ -1,5 +1,4 @@
 import csv
-from datetime import datetime, timedelta, timezone
 import hashlib
 import io
 import json
@@ -13,8 +12,9 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+from carbon_budget_view import budget_methods, direct_budget_input, direct_budget_results
 from section_flux_view import (
-    SERIES_MODE, carbon_reactions, section_input, section_map,
+    carbon_reactions, section_input, section_map,
     section_references, section_results,
 )
 from tidal_csv import calculate_observation_csv
@@ -69,7 +69,10 @@ def render_nearby_poc() -> None:
     st.altair_chart(chart, width='stretch')
     st.caption('그래프 자료 · [NOAA CoastWatch ERDDAP, MODIS Aqua POC 일별 4 km 제품]'
                '(https://coastwatch.pfeg.noaa.gov/erddap/griddap/erdMPOC1day_R2022SQ.html)')
-    st.info('동막 단면의 밀물 유입량·썰물 유출량은 산정 대기 중입니다. 같은 단면·시각의 유량과 수중 POC 농도가 필요합니다.')
+    st.info('동막의 세 경로를 산정하려면 같은 단면·시각의 유량과 POC·DOC·DIC 농도, '
+            '같은 기간의 대기 CO₂ 플럭스와 교환 면적이 필요합니다. 이 위성 자료는 인근 표층 POC 농도를 보여줍니다.')
+    st.caption('유속·유향과 조위 자료는 관측소 위치와 기간을 확인하세요. '
+               '[국립해양조사원 해양 관측자료](https://www.data.go.kr/data/15155508/openapi.do)')
 
     with st.expander('격자 위치·자료 처리·참고문헌'):
         exact_lat, exact_lon = nearest['coordinates']
@@ -123,43 +126,6 @@ def run_model(payload: bytes) -> tuple[bytes, list[dict]]:
             row['NetExportPocKgC'] = -float(row['NetInPocKgC']) or 0.0
             row['NetExportPocKgCDay'] = -row['NetInPocKgCDay'] or 0.0
     return pd.DataFrame(rows).to_csv(index=False).encode('utf-8-sig'), rows
-
-
-def direct_input() -> bytes | None:
-    st.caption('입력 자료 · 앱 기본값 또는 사용자 입력을 사용한 가상 시나리오')
-    defaults = st.session_state.get('submitted_direct_inputs', [(0.20, 5.0, 2.0, 360), (0.20, 5.0, 3.0, 360)])
-    with st.form('direct-input'):
-        phases = []
-        for column, label, (default_speed, default_area, default_poc, default_minutes) in zip(
-            st.columns(2), ('밀물', '썰물'), defaults,
-        ):
-            with column:
-                st.markdown(f'**{label}**')
-                speed = st.number_input('단면 수직 유속 (m/s)', 0.0, value=default_speed, step=0.01, key=f'{label}-speed')
-                area = st.number_input('잠긴 단면적 (m²)', 0.0, value=default_area, step=0.1, key=f'{label}-area')
-                poc = st.number_input('POC 농도 (mg C/L)', 0.0, value=default_poc, step=0.1, key=f'{label}-poc')
-                minutes = st.number_input('지속 시간 (분)', 1, value=default_minutes, step=1, key=f'{label}-time')
-                phases.append((speed, area, poc, minutes))
-        submitted = st.form_submit_button('탄소 수송량 계산', type='primary')
-
-    if not submitted:
-        return None
-
-    st.session_state['submitted_direct_inputs'] = phases
-    columns = next(csv.reader(io.StringIO(SCHEMA.read_text(encoding='utf-8-sig'))))
-    buffer = io.StringIO()
-    writer = csv.DictWriter(buffer, fieldnames=columns)
-    writer.writeheader()
-    start = datetime(2000, 1, 1, 6, tzinfo=timezone(timedelta(hours=9)))
-    for (phase, direction), (speed, area, poc, minutes) in zip((('Flood', 'In'), ('Ebb', 'Out')), phases):
-        writer.writerow(dict(
-            Region='동막 갯벌', Station='직접 입력 시나리오', CycleId='DIRECT',
-            DataKind='Scenario', Phase=phase, Direction='Slack' if speed == 0 else direction,
-            StartTime=start.isoformat(), DurationMin=minutes,
-            SectionNormalSpeedMps=speed, WettedAreaM2=area, PocMgL=poc, DataSource='가상 직접 입력',
-        ))
-        start += timedelta(minutes=minutes)
-    return buffer.getvalue().encode('utf-8-sig')
 
 
 def render_result(rows: list[dict], payload: bytes) -> None:
@@ -238,18 +204,21 @@ if page == NEARBY_PAGE:
     st.stop()
 
 if page == RESULT_PAGE:
+    direct_result = st.session_state.get('carbon_budget_result')
     section_result = st.session_state.get('section_result')
     result = st.session_state.get('poc_result')
-    if section_result is not None:
+    if direct_result is not None:
+        direct_budget_results(direct_result)
+    elif section_result is not None:
         section_results(section_result)
     elif result is None:
-        st.title('단면 POC 순유출량')
+        st.title('갯벌 탄소 수송 결과')
         st.info('입력값 메뉴에서 먼저 탄소 수송량을 계산하세요.')
     else:
         result_csv, result_rows = result
         render_result(result_rows, result_csv)
-    st.caption('순유출은 입력 기간에 단면을 통해 바다 쪽으로 나간 POC가 들어온 양보다 많았다는 뜻입니다. '
-               '장기 저장량 변화는 퇴적·매몰과 재퇴적 자료를 함께 평가해야 합니다.')
+    st.caption('이 결과는 조석기의 탄소 이동을 보여줍니다. 장기 저장량 변화는 퇴적·매몰과 재퇴적 자료를 함께 평가해야 합니다.')
+    budget_methods()
     section_references()
     carbon_reactions()
     st.stop()
@@ -259,36 +228,46 @@ with st.container(horizontal=True, vertical_alignment='center', gap='small', key
     st.markdown('한국해양과학기술원(KIOST)  \n**제13차 차세대 해양과학자 워크숍**')
 st.title('밀물에 들어온 탄소, 썰물에 얼마나 빠져나갈까?')
 st.caption('조석 비대칭성에 따른 비식생 갯벌의 탄소 수송 및 블루카본 저장 안정성 평가')
-st.markdown('**조석 기반 단면 POC 순유출량 자동 산정 프로그램**')
-st.caption('갯벌을 오가는 입자성 유기탄소(POC)의 유입량과 유출량을 계산해 기존 블루카본 저장량 평가를 보완합니다.')
+st.markdown('**갯벌 탄소 유입·유출량 산정 프로그램**')
+st.caption('수중 POC·DOC·DIC 유입과 입자성·용존성·대기 CO₂ 유출을 비교해 블루카본 저장량 평가를 보완합니다.')
 st.header('입력값')
-mode = st.segmented_control('입력 방식', (SERIES_MODE, DIRECT_MODE, CSV_MODE), default=SERIES_MODE,
-                            required=True, label_visibility='collapsed', key='tidal_section_input_mode', persist_state='session')
+mode = st.segmented_control('입력 방식', (CSV_MODE, DIRECT_MODE), default=CSV_MODE,
+                            required=True, label_visibility='collapsed', key='tidal_carbon_budget_input_mode',
+                            persist_state='session')
 
-if mode == SERIES_MODE:
+if mode == DIRECT_MODE:
     try:
-        section_result = section_input()
+        direct_result = direct_budget_input()
     except ValueError as error:
         st.error(str(error))
     else:
-        if section_result is not None:
+        if direct_result is not None:
             st.session_state.pop('poc_result', None)
-            st.session_state['section_result'] = section_result
+            st.session_state.pop('section_result', None)
+            st.session_state['carbon_budget_result'] = direct_result
             st.session_state['tidal_page'] = RESULT_PAGE
             st.rerun()
-    section_references()
+    budget_methods()
     st.stop()
 
-st.caption('단면에 수직인 유속과 침수 단면적을 직접 입력하는 간단 계산입니다. 유향과 조위를 반영하려면 시간별 CSV를 선택하세요.')
-if mode == DIRECT_MODE:
-    payload = direct_input()
+try:
+    section_result = section_input()
+except ValueError as error:
+    st.error(str(error))
 else:
-    uploaded = st.file_uploader('관측 CSV 선택', type='csv', max_upload_size=10)
-    st.caption('입력 자료 · 사용자 제공 CSV. 관측 기관·보고서 등 원자료 출처는 `DataSource` 열에 입력합니다.')
+    if section_result is not None:
+        st.session_state.pop('poc_result', None)
+        st.session_state.pop('carbon_budget_result', None)
+        st.session_state['section_result'] = section_result
+        st.session_state['tidal_page'] = RESULT_PAGE
+        st.rerun()
+
+with st.expander('기존 POC 전용 관측 CSV'):
+    uploaded = st.file_uploader('기존 관측 CSV 선택', type='csv', max_upload_size=10)
     data = uploaded.getvalue() if uploaded is not None else None
-    compute = st.button('탄소 수송량 계산', type='primary', disabled=not data)
+    compute = st.button('POC 전용 계산', disabled=not data)
     payload = data if compute else None
-    st.download_button('관측 CSV 양식', SCHEMA.read_bytes(), 'observations.template.csv',
+    st.download_button('POC 전용 CSV 양식', SCHEMA.read_bytes(), 'observations.template.csv',
                        'text/csv', on_click='ignore')
 
 if payload is not None:
@@ -303,12 +282,10 @@ if payload is not None:
             st.code(str(error), language=None)
     else:
         st.session_state.pop('section_result', None)
+        st.session_state.pop('carbon_budget_result', None)
         st.session_state['poc_result'] = (result_csv, result_rows)
         st.session_state['tidal_page'] = RESULT_PAGE
         st.rerun()
 
-with st.expander('입력 자료 참고문헌'):
-    st.markdown(
-        '**단면 유량 측정** · Turnipseed와 Sauer(2010), *Discharge Measurements at Gaging Stations*. '
-        '[USGS 보고서](https://pubs.usgs.gov/publication/tm3A8)'
-    )
+budget_methods()
+section_references()

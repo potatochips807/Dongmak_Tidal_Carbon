@@ -8,11 +8,12 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+from carbon_budget import BUDGET_COLUMNS
+from carbon_budget_view import render_budget
 from section_flux import AREA_COLUMNS, DATA_KINDS, INTERVAL_COLUMNS, TIDE_REGIMES, integrate_section
 from tidal_csv import protect_cell
 
 
-SERIES_MODE = '시간별 CSV'
 MAP_FILE = Path(__file__).resolve().parent / 'data' / 'study-area-section.svg'
 
 
@@ -26,33 +27,36 @@ def csv_bytes(columns, rows=()):
 
 def section_input():
     with st.container(horizontal=True):
-        st.download_button('시간별 CSV 양식', csv_bytes(INTERVAL_COLUMNS),
+        st.download_button('시간별 관측 CSV 양식', csv_bytes((*INTERVAL_COLUMNS, *BUDGET_COLUMNS)),
                            'section-intervals-template.csv', 'text/csv', on_click='ignore')
         st.download_button('조위–단면적 CSV 양식', csv_bytes(AREA_COLUMNS),
                            'section-area-template.csv', 'text/csv', on_click='ignore')
 
     st.caption('한 번에 한 단면을 계산합니다. 조위 시계열과 단면적 표에는 같은 수직 기준면을 사용하세요.')
     source_col, area_col = st.columns(2)
-    intervals = source_col.file_uploader('시간별 유속·유향·조위·POC CSV', type='csv', max_upload_size=5)
+    intervals = source_col.file_uploader('시간별 유속·조위·탄소 관측 CSV', type='csv', max_upload_size=5)
     area = area_col.file_uploader('조위–침수 단면적 CSV', type='csv', max_upload_size=1)
     with st.form('section-config'):
         azimuth = st.number_input('갯벌 방향 단면 법선 방위각 (°)', 0.0, 359.99, 0.0,
                                   help='진북에서 시계 방향으로 잽니다. 유향은 물이 향하는 쪽입니다.')
         area_kind = st.selectbox('단면적 표의 자료 구분', tuple(DATA_KINDS), format_func=DATA_KINDS.__getitem__)
         area_source = st.text_input('단면적 출처와 조위 기준면', placeholder='예: 단면 측량 보고서, 기본수준면')
-        submitted = st.form_submit_button('단면 POC 수송량 계산', type='primary', disabled=not (intervals and area))
+        submitted = st.form_submit_button('탄소 유입·유출량 계산', type='primary', disabled=not (intervals and area))
     if submitted:
         return integrate_section(intervals.getvalue(), area.getvalue(), azimuth, area_source, area_kind)
     with st.expander('시간별 CSV 작성법'):
         st.write('한 행은 값이 대표하는 시간 구간입니다. StartTime에는 UTC 오프셋을 넣고, DurationMin으로 구간 길이를 지정합니다.')
         st.write('DataKind는 Scenario 또는 Observed, TideRegime은 Spring(대조기), Neap(소조기), Other(기타)입니다. 주기마다 CycleId를 지정하고 DataSource에 출처를 적으세요.')
         st.write('StageM은 조위(m), SpeedMps는 유속 크기(m/s), FlowBearingDeg는 유향(°), PocMgL은 단면을 대표하는 수중 POC 농도(mg C/L)입니다. 연속 구간 사이에 공백이 있으면 계산을 보류합니다.')
+        st.markdown('**Phase**에는 Flood(밀물), Ebb(썰물), Slack(정조)을 입력합니다. DocMgL·DicMgL은 mg C/L, '
+                    'AirCo2FluxUmolM2S는 µmol CO₂/m²/s(방출 +, 흡수 −), AirExchangeAreaM2는 m²입니다. '
+                    '결측값은 빈칸으로 두세요.')
     return None
 
 
 def section_results(result):
     summary, detail = map(pd.DataFrame, result)
-    st.title('단면 POC 순유출량')
+    st.title('갯벌 탄소 수송 결과')
     index = 0
     if len(summary) > 1:
         index = st.selectbox('계산 구간', range(len(summary)), format_func=lambda i: (
@@ -63,6 +67,9 @@ def section_results(result):
     st.text(f'단면적 출처 · {DATA_KINDS[row.AreaKind]} · {row.AreaSource}')
     if row.DataKind == 'Observed' and row.AreaKind == 'Scenario':
         st.info('관측 시계열에 가상 단면적을 적용한 시나리오입니다.')
+    if 'OutCarbonKgC' in row.index:
+        render_budget(row)
+    st.subheader('단면 POC 수송')
     cards = st.columns(3)
     cards[0].metric('갯벌 방향 유입 (kg C)', f'{row.InPocKgC:,.2f}', border=True)
     cards[1].metric('바다 방향 유출 (kg C)', f'{row.OutPocKgC:,.2f}', border=True)

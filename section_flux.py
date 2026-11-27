@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from io import StringIO
 from math import cos, fsum, isfinite, radians
 
+from carbon_budget import BUDGET_COLUMNS, budget_interval, summarize_budget
 from tidal_csv import protect_cell
 
 
@@ -17,12 +18,14 @@ TIDE_REGIMES = {'Spring': '대조기', 'Neap': '소조기', 'Other': '기타'}
 DATA_KINDS = {'Scenario': '가상 입력', 'Observed': '관측 입력'}
 
 
-def read_csv(payload, columns):
+def read_csv(payload, columns, optional_columns=()):
     try:
         reader = csv.reader(StringIO(payload.decode('utf-8-sig'), newline=''), strict=True)
         headers = next(reader, [])
-        if sorted(headers) != sorted(columns):
-            raise ValueError(f'CSV 열 이름을 확인하세요. 필요한 열은 {", ".join(columns)}입니다.')
+        header_set = set(headers)
+        if (len(headers) != len(header_set) or
+                not set(columns) <= header_set <= set((*columns, *optional_columns))):
+            raise ValueError(f'CSV 열 이름을 확인하세요. 필수 열은 {", ".join(columns)}입니다.')
         records = []
         line = reader.line_num + 1
         for fields in reader:
@@ -46,6 +49,10 @@ def number(row, column, line, *, minimum=None):
     if not isfinite(value) or (minimum is not None and value < minimum):
         raise ValueError(f'{line}행의 {column} 값이 유효 범위를 벗어났습니다.')
     return value
+
+
+def optional_number(row, column, line, *, minimum=None):
+    return number(row, column, line, minimum=minimum) if row.get(column) else None
 
 
 def read_area_curve(payload):
@@ -80,7 +87,7 @@ def integrate_section(interval_csv, area_csv, landward_bearing, area_source, are
         raise ValueError('조위–단면적 자료의 구분을 확인하세요.')
     levels, areas = read_area_curve(area_csv)
     cycles = defaultdict(list)
-    for line, row in read_csv(interval_csv, INTERVAL_COLUMNS):
+    for line, row in read_csv(interval_csv, INTERVAL_COLUMNS, BUDGET_COLUMNS):
         cycle_id, data_kind, regime = row['CycleId'], row['DataKind'], row['TideRegime']
         if not cycle_id or data_kind not in DATA_KINDS or regime not in TIDE_REGIMES:
             raise ValueError(f'{line}행의 CycleId, DataKind, TideRegime을 확인하세요.')
@@ -108,15 +115,23 @@ def integrate_section(interval_csv, area_csv, landward_bearing, area_source, are
         normal_speed = speed * projection if abs(projection) > 1e-14 else 0.0
         flow = normal_speed * area
         rate = flow * (poc / 1000)
-        mass = rate * (end - start).total_seconds()
-        if not all(isfinite(value) for value in (area, flow, rate, mass)):
+        if not all(isfinite(value) for value in (area, flow, rate)):
             raise ValueError(f'{line}행의 값이 계산 범위를 벗어났습니다. 단위를 확인하세요.')
+        phase = row.get('Phase') or None
+        if phase not in (None, 'Flood', 'Ebb', 'Slack'):
+            raise ValueError(f'{line}행의 Phase는 Flood, Ebb 또는 Slack으로 입력하세요.')
+        doc = optional_number(row, 'DocMgL', line, minimum=0)
+        dic = optional_number(row, 'DicMgL', line, minimum=0)
+        air_flux = optional_number(row, 'AirCo2FluxUmolM2S', line)
+        air_area = optional_number(row, 'AirExchangeAreaM2', line, minimum=0)
+        budget = budget_interval(phase, flow, (end - start).total_seconds(), (poc, doc, dic), air_flux, air_area)
         cycles[cycle_id].append((start, end, line, {
             'CycleId': cycle_id, 'DataKind': data_kind, 'TideRegime': regime,
             'StartTime': timestamp.isoformat(), 'DurationMin': duration, 'StageM': stage,
             'SpeedMps': speed, 'FlowBearingDeg': bearing, 'LandwardBearingDeg': landward_bearing,
             'NormalSpeedMps': normal_speed, 'WettedAreaM2': area, 'FlowM3S': flow,
-            'PocMgL': poc, 'PocFluxKgCS': rate, 'SignedPocKgC': mass,
+            'PocMgL': poc, 'DocMgL': doc, 'DicMgL': dic, 'PocFluxKgCS': rate,
+            'AirCo2FluxUmolM2S': air_flux, 'AirExchangeAreaM2': air_area, **budget,
             'DataSource': protect_cell(row['DataSource']), 'AreaKind': area_kind,
             'AreaSource': protect_cell(area_source.strip()),
         }))
@@ -131,20 +146,17 @@ def integrate_section(interval_csv, area_csv, landward_bearing, area_source, are
             if left[1] != right[0]:
                 raise ValueError(f'{cycle_id}의 {left[2]}–{right[2]}행 사이에 공백 또는 시간 중복이 있습니다.')
         seconds = fsum((end - start).total_seconds() for start, end, _, _ in entries)
-        masses = [row['SignedPocKgC'] for row in rows]
-        try:
-            inflow = fsum(mass for mass in masses if mass > 0)
-            outflow = fsum(-mass for mass in masses if mass < 0)
-        except OverflowError:
-            raise ValueError(f'{cycle_id}의 합계가 계산 범위를 벗어났습니다.') from None
+        budget = summarize_budget(rows)
+        inflow, outflow = budget['InPocKgC'], budget['OutPocKgC']
         net = inflow - outflow
         daily_in, daily_out, daily_net = (mass / seconds * 86400 for mass in (inflow, outflow, net))
         if not all(isfinite(value) for value in (daily_in, daily_out, daily_net)):
             raise ValueError(f'{cycle_id}의 일 환산값이 계산 범위를 벗어났습니다.')
         summaries.append({
             **{key: rows[0][key] for key in ('CycleId', 'DataKind', 'TideRegime', 'LandwardBearingDeg', 'AreaKind', 'AreaSource')},
+            **budget,
             'DurationHours': seconds / 3600,
-            'InPocKgC': inflow, 'OutPocKgC': outflow, 'NetPocKgC': net, 'NetExportPocKgC': -net or 0.0,
+            'NetPocKgC': net, 'NetExportPocKgC': -net or 0.0,
             'InPocKgCDay': daily_in, 'OutPocKgCDay': daily_out, 'NetPocKgCDay': daily_net,
             'NetExportPocKgCDay': -daily_net or 0.0,
             'DataSource': ' | '.join(dict.fromkeys(row['DataSource'] for row in rows)),
