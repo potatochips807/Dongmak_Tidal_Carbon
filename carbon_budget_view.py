@@ -4,7 +4,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from carbon_budget import budget_interval, summarize_budget
+from carbon_budget import budget_interval, sum_known, summarize_budget
 from section_flux import DATA_KINDS
 from tidal_csv import protect_cell
 
@@ -83,25 +83,48 @@ def render_budget(row):
         highest = max(outgoing)
         names = ' · '.join(name for name, value in zip(PATHWAYS, outgoing) if value == highest)
         st.caption(f'가장 큰 유출 경로 · **{names}** ({highest / row["OutCarbonKgC"]:.1%})')
+        st.dataframe(
+            shares.assign(탄소량=shares['탄소량'].map(format_mass), 비중=shares['비중'].map('{:.1%}'.format))
+            .rename(columns={'탄소량': '유출량 (kg C)'}),
+            hide_index=True, alt='세 경로별 유출량과 비중',
+        )
     elif complete_outgoing:
         st.info('입력 기간의 총유출량은 0 kg C입니다.')
     else:
         st.info('세 경로의 유출 자료가 모두 갖춰지면 합계, 원형 그래프와 최대 유출 경로를 표시합니다.')
 
-    if complete_outgoing and not pd.isna(row['InCarbonKgC']):
+    has_phase_totals = all(
+        not pd.isna(row[key]) for key in ('FloodInWaterKgC', 'EbbOutWaterKgC', 'OutAirCo2KgC')
+    )
+    if has_phase_totals:
+        incoming = row['FloodInWaterKgC']
+        compare_outgoing = [
+            row['EbbOutPocKgC'],
+            sum_known((row['EbbOutDocKgC'], row['EbbOutDicKgC'])),
+            row['OutAirCo2KgC'],
+        ]
+        categories = ['밀물 수중 유입', '썰물 수중 유출 + 대기 방출']
+    else:
+        incoming = row['InCarbonKgC']
+        compare_outgoing = outgoing
+        categories = ['수중 총유입', '세 경로 총유출']
+    if not any(pd.isna(value) for value in (incoming, *compare_outgoing)):
         labels = ['수중 유입 (POC + DOC + DIC)', *PATHWAYS]
-        bars = pd.DataFrame({'구분': ['수중 유입', '세 경로 유출', '세 경로 유출', '세 경로 유출'],
-                             '경로': labels, '탄소량': [row['InCarbonKgC'], *outgoing], '순서': range(4)})
+        bars = pd.DataFrame({'구분': [categories[0], *([categories[1]] * 3)],
+                             '경로': labels, '탄소량': [incoming, *compare_outgoing], '순서': range(4)})
         chart = alt.Chart(bars).mark_bar().encode(
-            x=alt.X('구분:N', sort=['수중 유입', '세 경로 유출'], title=None),
+            x=alt.X('구분:N', sort=categories, title=None),
             y=alt.Y('탄소량:Q', title='입력 기간 탄소량 (kg C)', stack='zero'),
             color=alt.Color('경로:N', scale=alt.Scale(domain=labels, range=FLOW_COLORS),
                             legend=alt.Legend(title=None, orient='bottom')),
             order='순서:Q',
             tooltip=[alt.Tooltip('경로:N'), alt.Tooltip('탄소량:Q', title='탄소량 (kg C)', format=',.4g')],
         ).properties(height=230, description='한 색의 총유입 막대와 세 경로로 쌓은 총유출 막대')
-        st.subheader('총유입량과 총유출량 비교')
+        st.subheader('밀물 유입량과 썰물 유출량 비교' if has_phase_totals else '총유입량과 총유출량 비교')
         st.altair_chart(chart, width='stretch')
+        if has_phase_totals:
+            st.caption('막대의 대기 CO₂는 입력 기간 전체의 방출량입니다. 원형 그래프는 수중 유출도 기간 전체를 합산합니다.')
+    if not pd.isna(row['NetExportCarbonKgC']):
         difference = row['NetExportCarbonKgC']
         daily_difference = difference / row['DurationHours'] * 24
         st.caption(f'세 경로 총유출 − 수중 총유입 · **{difference:+,.6g} kg C** · '
@@ -127,6 +150,16 @@ def direct_budget_results(row):
     exported = {**row, 'DataSource': protect_cell(row['DataSource'])}
     st.download_button('경로별 결과 CSV', pd.DataFrame([exported]).to_csv(index=False).encode('utf-8-sig'),
                        'carbon-budget-summary.csv', 'text/csv', on_click='ignore')
+
+
+def preview_budget_results():
+    st.title('결과 그래프 미리보기')
+    st.info('가상 검산값으로 그래프를 보여줍니다. 동막 관측 결과를 보려면 입력값에서 관측 CSV를 올리세요.')
+    intervals = [
+        budget_interval('Flood', 1, 21600, (1.5, 2.5, 8.5), 2, 50000),
+        budget_interval('Ebb', -1.15, 21600, (2.2, 3.5, 9.5), 3, 50000),
+    ]
+    render_budget({**summarize_budget(intervals), 'DurationHours': 12})
 
 
 def budget_methods():

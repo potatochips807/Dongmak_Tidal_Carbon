@@ -12,7 +12,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from carbon_budget_view import budget_methods, direct_budget_input, direct_budget_results
+from carbon_budget_view import budget_methods, direct_budget_input, direct_budget_results, preview_budget_results
 from section_flux_view import (
     carbon_reactions, section_input, section_map,
     section_references, section_results,
@@ -212,8 +212,8 @@ if page == RESULT_PAGE:
     elif section_result is not None:
         section_results(section_result)
     elif result is None:
-        st.title('갯벌 탄소 수송 결과')
-        st.info('입력값 메뉴에서 먼저 탄소 수송량을 계산하세요.')
+        preview_budget_results()
+        st.button('자료 입력으로 이동', on_click=st.session_state.update, kwargs={'tidal_page': INPUT_PAGE})
     else:
         result_csv, result_rows = result
         render_result(result_rows, result_csv)
@@ -230,6 +230,9 @@ st.title('밀물에 들어온 탄소, 썰물에 얼마나 빠져나갈까?')
 st.caption('조석 비대칭성에 따른 비식생 갯벌의 탄소 수송 및 블루카본 저장 안정성 평가')
 st.markdown('**갯벌 탄소 유입·유출량 산정 프로그램**')
 st.caption('수중 POC·DOC·DIC 유입과 입자성·용존성·대기 CO₂ 유출을 비교해 블루카본 저장량 평가를 보완합니다.')
+has_result = any(key in st.session_state for key in ('carbon_budget_result', 'section_result', 'poc_result'))
+st.button('결과 그래프 보기' if has_result else '결과 그래프 미리보기',
+          icon=':material/analytics:', on_click=st.session_state.update, kwargs={'tidal_page': RESULT_PAGE})
 st.header('입력값')
 mode = st.segmented_control('입력 방식', (CSV_MODE, DIRECT_MODE), default=CSV_MODE,
                             required=True, label_visibility='collapsed', key='tidal_carbon_budget_input_mode',
