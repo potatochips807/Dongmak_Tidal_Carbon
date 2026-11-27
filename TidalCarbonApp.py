@@ -14,7 +14,7 @@ import pandas as pd
 import streamlit as st
 
 from section_flux_view import (
-    DEMO_MODE, SERIES_MODE, carbon_reactions, section_input, section_map,
+    SERIES_MODE, carbon_reactions, section_input, section_map,
     section_references, section_results,
 )
 from tidal_csv import calculate_observation_csv
@@ -258,12 +258,12 @@ st.title('밀물에 들어온 탄소, 썰물에 얼마나 빠져나갈까?')
 st.caption('조석 비대칭성에 따른 비식생 갯벌의 탄소 수송 및 블루카본 저장 안정성 평가')
 st.write('조석 기반 단면 POC 순유출량을 산정해 갯벌 탄소 저장량 평가를 보완합니다.')
 st.header('입력값')
-mode = st.segmented_control('입력 방식', (DEMO_MODE, SERIES_MODE, DIRECT_MODE, CSV_MODE), default=DEMO_MODE,
+mode = st.segmented_control('입력 방식', (SERIES_MODE, DIRECT_MODE, CSV_MODE), default=SERIES_MODE,
                             required=True, label_visibility='collapsed', key='tidal_section_input_mode', persist_state='session')
 
-if mode in (DEMO_MODE, SERIES_MODE):
+if mode == SERIES_MODE:
     try:
-        section_result = section_input(mode)
+        section_result = section_input()
     except ValueError as error:
         st.error(str(error))
     else:

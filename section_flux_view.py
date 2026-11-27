@@ -1,9 +1,7 @@
 """Streamlit views for section flux inputs, results, and methods."""
 
 import csv
-from datetime import datetime, timedelta
 from io import StringIO
-from math import cos, pi, sin
 from pathlib import Path
 
 import altair as alt
@@ -14,12 +12,11 @@ from section_flux import AREA_COLUMNS, DATA_KINDS, INTERVAL_COLUMNS, TIDE_REGIME
 from tidal_csv import protect_cell
 
 
-DEMO_MODE = '대조·소조 예시'
 SERIES_MODE = '시간별 CSV'
 MAP_FILE = Path(__file__).resolve().parent / 'data' / 'study-area-section.svg'
 
 
-def csv_bytes(columns, rows):
+def csv_bytes(columns, rows=()):
     buffer = StringIO()
     writer = csv.writer(buffer)
     writer.writerow(columns)
@@ -27,40 +24,12 @@ def csv_bytes(columns, rows):
     return buffer.getvalue().encode('utf-8-sig')
 
 
-def example_files():
-    period = 745
-    records = []
-    for cycle, regime, date, amplitude, peak_speed in (
-        ('SPRING-DEMO', 'Spring', '2000-01-01T06:00:00+09:00', 3.5, 0.58),
-        ('NEAP-DEMO', 'Neap', '2000-01-08T06:00:00+09:00', 1.8, 0.34),
-    ):
-        start = datetime.fromisoformat(date)
-        for elapsed in range(0, period, 60):
-            duration = min(60, period - elapsed)
-            angle = 2 * pi * (elapsed + duration / 2) / period
-            phase_flow = sin(angle)
-            records.append((cycle, 'Scenario', regime, (start + timedelta(minutes=elapsed)).isoformat(),
-                            duration, round(-amplitude * cos(angle), 3), round(peak_speed * abs(phase_flow), 3),
-                            25 if phase_flow >= 0 else 205, 0.35 if phase_flow >= 0 else 0.53,
-                            '발표용 가상 조석 조건'))
-    geometry = [(-9, 0), (-3, 9000), (0, 16500), (3, 24200), (5, 30000)]
-    return csv_bytes(INTERVAL_COLUMNS, records), csv_bytes(AREA_COLUMNS, geometry)
-
-
-def section_input(mode):
-    example_series, example_area = example_files()
+def section_input():
     with st.container(horizontal=True):
-        st.download_button('시간별 CSV 예시', example_series, 'section-intervals-example.csv', 'text/csv', on_click='ignore')
-        st.download_button('조위–단면적 CSV 예시', example_area, 'section-area-example.csv', 'text/csv', on_click='ignore')
-    if mode == DEMO_MODE:
-        st.info('발표용 가상 입력입니다. 지도에 표시한 가상 단면의 북쪽을 유입 방향으로 둡니다.')
-        with st.expander('시간별 가상 입력과 조위–단면적 표'):
-            for payload, label in ((example_series, '가상 시간별 입력'), (example_area, '가상 조위–단면적 표')):
-                st.dataframe(pd.DataFrame(list(csv.DictReader(StringIO(payload.decode('utf-8-sig'))))),
-                             hide_index=True, alt=label)
-        if st.button('단면 POC 수송량 계산', type='primary'):
-            return integrate_section(example_series, example_area, 0.0, '발표용 가상 조위–단면적 표')
-        return None
+        st.download_button('시간별 CSV 양식', csv_bytes(INTERVAL_COLUMNS),
+                           'section-intervals-template.csv', 'text/csv', on_click='ignore')
+        st.download_button('조위–단면적 CSV 양식', csv_bytes(AREA_COLUMNS),
+                           'section-area-template.csv', 'text/csv', on_click='ignore')
 
     st.caption('한 번에 한 단면을 계산합니다. 조위 시계열과 단면적 표에는 같은 수직 기준면을 사용하세요.')
     source_col, area_col = st.columns(2)
@@ -142,7 +111,7 @@ def section_map():
     st.subheader('연구해역과 가상 단면')
     st.image(MAP_FILE, width='stretch',
              alt='강화 남단 연구해역의 가상 단면. 북쪽은 갯벌 방향 유입, 남쪽은 바다 방향 유출.')
-    st.caption('제공된 연구해역 지도 위에 가상 단면을 표시했습니다. 단면 중심은 약 37.57°N, 126.40°E입니다. 예시의 갯벌 방향 법선은 진북 0°입니다.')
+    st.caption('가상 단면의 중심은 약 37.57°N, 126.40°E이고, 지도에서 갯벌 방향 법선은 진북 0°입니다.')
 
 
 def section_references():

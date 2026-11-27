@@ -23,6 +23,6 @@ python -m pip install -r requirements.txt
 python -m streamlit run TidalCarbonApp.py
 ```
 
-동막 인근 위성 자료는 배경 농도 참고용입니다. 가상 예시와 관측 자료는 입력 CSV에서 출처와 함께 구분합니다. [NOAA CoastWatch ERDDAP](https://coastwatch.pfeg.noaa.gov/erddap/griddap/erdMPOC1day_R2022SQ.html)
+동막 인근 위성 자료는 배경 농도 참고용입니다. 가상값과 관측값은 입력 CSV에서 출처와 함께 구분합니다. [NOAA CoastWatch ERDDAP](https://coastwatch.pfeg.noaa.gov/erddap/griddap/erdMPOC1day_R2022SQ.html)
 
 단면 유속을 이용한 POC 수송의 관측 사례는 [Ganju 외(2019)](https://pubs.usgs.gov/publication/70203493)를, 조위와 지형을 이용한 물 부피 기반 접근법은 [Yuan 외(2022)](https://doi.org/10.3389/fmars.2021.809618)를 참고했습니다.
