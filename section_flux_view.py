@@ -2,7 +2,6 @@
 
 import csv
 from io import StringIO
-from pathlib import Path
 
 import altair as alt
 import pandas as pd
@@ -12,9 +11,6 @@ from carbon_budget import BUDGET_COLUMNS
 from carbon_budget_view import render_budget
 from section_flux import AREA_COLUMNS, DATA_KINDS, INTERVAL_COLUMNS, TIDE_REGIMES, integrate_section
 from tidal_csv import protect_cell
-
-
-MAP_FILE = Path(__file__).resolve().parent / 'data' / 'study-area-section.svg'
 
 
 def csv_bytes(columns, rows=()):
@@ -54,14 +50,18 @@ def section_input():
     return None
 
 
-def section_results(result):
-    summary, detail = map(pd.DataFrame, result)
-    st.title('갯벌 탄소 수송 결과')
+def select_section_row(summary):
     index = 0
     if len(summary) > 1:
         index = st.selectbox('계산 구간', range(len(summary)), format_func=lambda i: (
             f'{TIDE_REGIMES[summary.iloc[i].TideRegime]} · {summary.iloc[i].CycleId}'))
-    row = summary.iloc[index]
+    return summary.iloc[index]
+
+
+def section_results(result):
+    summary, detail = map(pd.DataFrame, result)
+    st.title('갯벌 탄소 수송 결과')
+    row = select_section_row(summary)
     st.caption(f'{DATA_KINDS[row.DataKind]} · {TIDE_REGIMES[row.TideRegime]} · 구간 {row.DurationHours:.2f}시간')
     st.text(f'유속·조위·POC 출처 · {row.DataSource}')
     st.text(f'단면적 출처 · {DATA_KINDS[row.AreaKind]} · {row.AreaSource}')
@@ -118,13 +118,6 @@ def section_results(result):
                                        ('시간별 결과 CSV', detail, 'section-flux-intervals.csv')):
             payload = frame.assign(CycleId=frame.CycleId.map(protect_cell)).to_csv(index=False).encode('utf-8-sig')
             st.download_button(label, payload, filename, 'text/csv', on_click='ignore')
-
-
-def section_map():
-    st.subheader('연구해역과 가상 단면')
-    st.image(MAP_FILE, width='stretch',
-             alt='강화 남단 연구해역의 가상 단면. 북쪽은 갯벌 방향 유입, 남쪽은 바다 방향 유출.')
-    st.caption('가상 단면의 중심은 약 37.57°N, 126.40°E이고, 지도에서 갯벌 방향 법선은 진북 0°입니다.')
 
 
 def section_references():

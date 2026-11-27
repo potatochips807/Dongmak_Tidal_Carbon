@@ -12,9 +12,12 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from carbon_budget_view import budget_methods, direct_budget_input, direct_budget_results, preview_budget_results
+from carbon_budget_view import (
+    budget_methods, direct_budget_input, direct_budget_results, preview_budget_results, render_budget,
+)
+from section_flux import DATA_KINDS
 from section_flux_view import (
-    carbon_reactions, section_input, section_map,
+    carbon_reactions, section_input, select_section_row,
     section_references, section_results,
 )
 from tidal_csv import calculate_observation_csv
@@ -199,7 +202,20 @@ with st.sidebar:
 
 if page == NEARBY_PAGE:
     st.title(NEARBY_PAGE)
-    section_map()
+    direct_result = st.session_state.get('carbon_budget_result')
+    section_result = st.session_state.get('section_result')
+    if direct_result is not None:
+        st.caption(f'입력한 자료 · {DATA_KINDS[direct_result["DataKind"]]} · '
+                   f'{direct_result["DataSource"]}')
+        render_budget(direct_result)
+    elif section_result is not None and 'OutCarbonKgC' in section_result[0][0]:
+        row = select_section_row(pd.DataFrame(section_result[0]))
+        st.caption(f'업로드한 단면 자료 · {row.CycleId} · {DATA_KINDS[row.DataKind]} · {row.DataSource} '
+                   f'· 단면적 {DATA_KINDS[row.AreaKind]}')
+        render_budget(row)
+    else:
+        preview_budget_results()
+    st.header('동막 인근 위성 POC 농도')
     render_nearby_poc()
     st.stop()
 
@@ -212,6 +228,7 @@ if page == RESULT_PAGE:
     elif section_result is not None:
         section_results(section_result)
     elif result is None:
+        st.title('결과 그래프 미리보기')
         preview_budget_results()
         st.button('자료 입력으로 이동', on_click=st.session_state.update, kwargs={'tidal_page': INPUT_PAGE})
     else:

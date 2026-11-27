@@ -153,7 +153,6 @@ def direct_budget_results(row):
 
 
 def preview_budget_results():
-    st.title('결과 그래프 미리보기')
     st.info('가상 검산값으로 그래프를 보여줍니다. 동막 관측 결과를 보려면 입력값에서 관측 CSV를 올리세요.')
     intervals = [
         budget_interval('Flood', 1, 21600, (1.5, 2.5, 8.5), 2, 50000),
