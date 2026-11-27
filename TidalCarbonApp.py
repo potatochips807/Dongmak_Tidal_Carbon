@@ -13,6 +13,10 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+from section_flux_view import (
+    DEMO_MODE, SERIES_MODE, carbon_reactions, section_input, section_map,
+    section_references, section_results,
+)
 from tidal_csv import calculate_observation_csv
 
 ROOT = Path(__file__).resolve().parent
@@ -228,31 +232,50 @@ with st.sidebar:
 
 if page == NEARBY_PAGE:
     st.title(NEARBY_PAGE)
+    section_map()
     render_nearby_poc()
     st.stop()
 
 if page == RESULT_PAGE:
+    section_result = st.session_state.get('section_result')
     result = st.session_state.get('poc_result')
-    if result is None:
-        st.title('POC 수송 결과')
+    if section_result is not None:
+        section_results(section_result)
+    elif result is None:
+        st.title('단면 POC 수송량')
         st.info('입력값 메뉴에서 먼저 탄소 수송량을 계산하세요.')
     else:
         result_csv, result_rows = result
         render_result(result_rows, result_csv)
-    with st.expander('수송량 계산 참고문헌'):
-        st.markdown('**조석 주기별 유기탄소 수송량 산정 사례** · Yuan 외(2022), *Frontiers in Marine Science*. '
-                    '[논문](https://doi.org/10.3389/fmars.2021.809618)')
+    section_references()
+    carbon_reactions()
     st.stop()
 
 with st.container(horizontal=True, vertical_alignment='center', gap='small', key='workshop-banner'):
     st.image(ROOT / 'kiost-logo.png', width=112, alt='한국해양과학기술원 KIOST 로고')
-    st.markdown('한국해양과학기술원(KIOST)  \n**제13차 해양과학자 워크숍**')
+    st.markdown('한국해양과학기술원(KIOST)  \n**제13차 차세대 해양과학자 워크숍**')
 st.title('밀물에 들어온 탄소, 썰물에 얼마나 빠져나갈까?')
 st.caption('조석 비대칭성에 따른 비식생 갯벌의 탄소 수송 및 블루카본 저장 안정성 평가')
+st.write('조석 기반 단면 POC 순유출량을 산정해 갯벌 탄소 저장량 평가를 보완합니다.')
 st.header('입력값')
-mode = st.segmented_control('입력 방식', (DIRECT_MODE, CSV_MODE), default=DIRECT_MODE,
-                            required=True, label_visibility='collapsed', key='tidal_input_mode', persist_state='session')
+mode = st.segmented_control('입력 방식', (DEMO_MODE, SERIES_MODE, DIRECT_MODE, CSV_MODE), default=DEMO_MODE,
+                            required=True, label_visibility='collapsed', key='tidal_section_input_mode', persist_state='session')
 
+if mode in (DEMO_MODE, SERIES_MODE):
+    try:
+        section_result = section_input(mode)
+    except ValueError as error:
+        st.error(str(error))
+    else:
+        if section_result is not None:
+            st.session_state.pop('poc_result', None)
+            st.session_state['section_result'] = section_result
+            st.session_state['tidal_page'] = RESULT_PAGE
+            st.rerun()
+    section_references()
+    st.stop()
+
+st.caption('단면에 수직인 유속과 침수 단면적을 직접 입력하는 간단 계산입니다. 유향과 조위를 반영하려면 시간별 CSV를 선택하세요.')
 if mode == DIRECT_MODE:
     payload = direct_input()
 else:
@@ -265,7 +288,6 @@ else:
                        'text/csv', on_click='ignore')
 
 if payload is not None:
-    st.session_state.pop('poc_result', None)
     try:
         with st.spinner('수송량 계산 중…'):
             result_csv, result_rows = run_model(payload)
@@ -276,6 +298,7 @@ if payload is not None:
         with st.expander('오류 상세'):
             st.code(str(error), language=None)
     else:
+        st.session_state.pop('section_result', None)
         st.session_state['poc_result'] = (result_csv, result_rows)
         st.session_state['tidal_page'] = RESULT_PAGE
         st.rerun()
