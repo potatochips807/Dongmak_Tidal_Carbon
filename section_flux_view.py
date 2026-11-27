@@ -122,9 +122,16 @@ def section_references():
         st.write('진북 기준 유향과 갯벌 방향 법선의 차이로 수직 유속을 구합니다. 조위에 따른 침수 단면적은 입력한 표에서 선형 보간합니다.')
         st.write('각 구간을 대표하는 유속·면적·농도의 곱에 지속 시간(초)을 곱하고, 양수와 음수를 따로 적분합니다. 단면 내 수직·수평 분포는 대표값으로 근사합니다.')
         st.caption('Q는 m³/s, C는 mg C/L입니다. 1 mg C/L = 0.001 kg C/m³이므로 1,000으로 나누면 F가 kg C/s, M이 kg C입니다.')
-        st.markdown('- **조석 수로의 관측 기반 POC 수송** · Ganju 외(2019). [단면 유속과 부유입자 연구](https://pubs.usgs.gov/publication/70203493)\n'
-                    '- **유속–면적법** · Turnipseed & Sauer(2010). [USGS 보고서](https://pubs.usgs.gov/publication/tm3A8)\n'
-                    '- **조위·지형 기반 물 부피 변화 방식** · Yuan 외(2022). [비교 연구](https://doi.org/10.3389/fmars.2021.809618)')
+        st.markdown(
+            '- **단면 유속 기반 탄소 수송** · Bogard 외(2020)는 조위별 단면적과 단면 평균 유속으로 유량을 구하고 '
+            '탄소 수송량을 산정했습니다. POC 농도 추정에는 탁도, 부유퇴적물 농도와 유기탄소 비율을 이용했습니다. '
+            '[논문](https://doi.org/10.1029/2019GB006430)\n'
+            '- **조석 수로의 POC 수송 관측** · Ganju 외(2019)는 수로의 단면 유속·탁도 관측과 채수 자료를 활용했습니다. '
+            '[논문](https://doi.org/10.1029/2018JG004920)\n'
+            '- **조위·지형 기반 물 부피 변화** · Yuan 외(2022)는 조위와 수치표고모형으로 시간별 침수 부피를 구하고, '
+            '부피 변화량과 탄소 농도로 POC·DOC 수송량을 추정했습니다. [양쯔강 하구 연구](https://doi.org/10.3389/fmars.2021.809618)\n'
+            '- **유속–면적법** · Turnipseed & Sauer(2010). [USGS 유량 측정 보고서](https://pubs.usgs.gov/publication/tm3A8)'
+        )
 
 
 def carbon_reactions():

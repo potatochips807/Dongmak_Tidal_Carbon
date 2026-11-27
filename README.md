@@ -1,6 +1,6 @@
 # 동막 갯벌 탄소 수송
 
-시간 구간마다 단면 수직 유속, 조위별 침수 단면적, 수중 입자성 유기탄소(POC) 농도를 곱해 유입량과 유출량을 구하는 Streamlit 앱입니다. 이 단면 순수송량은 갯벌 탄소 저장량 평가를 보완하는 지표입니다.
+조석 기반 단면 POC 순유출량을 자동 산정하는 Streamlit 앱입니다. 시간 구간마다 단면 수직 유속, 조위별 침수 단면적, 수중 입자성 유기탄소(POC) 농도를 이용해 유입량과 유출량을 구합니다. 이 단면 순수송량은 갯벌 블루카본 저장량 평가를 보완하는 지표입니다.
 
 ## 계산에 필요한 자료
 
@@ -25,4 +25,6 @@ python -m streamlit run TidalCarbonApp.py
 
 동막 인근 위성 자료는 배경 농도 참고용입니다. 가상값과 관측값은 입력 CSV에서 출처와 함께 구분합니다. [NOAA CoastWatch ERDDAP](https://coastwatch.pfeg.noaa.gov/erddap/griddap/erdMPOC1day_R2022SQ.html)
 
-단면 유속을 이용한 POC 수송의 관측 사례는 [Ganju 외(2019)](https://pubs.usgs.gov/publication/70203493)를, 조위와 지형을 이용한 물 부피 기반 접근법은 [Yuan 외(2022)](https://doi.org/10.3389/fmars.2021.809618)를 참고했습니다.
+단면 유속과 조위별 침수 단면적으로 유량을 구한 뒤 탄소 수송량을 산정한 사례를 참고했습니다. [Bogard 외(2020)](https://doi.org/10.1029/2019GB006430) · [Ganju 외(2019)](https://doi.org/10.1029/2018JG004920)
+
+양쯔강 하구에서 조위와 지형에 따른 침수 부피 변화로 POC·DOC 수송을 추정한 연구도 참고했습니다. [Yuan 외(2022)](https://doi.org/10.3389/fmars.2021.809618)

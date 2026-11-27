@@ -247,6 +247,8 @@ if page == RESULT_PAGE:
     else:
         result_csv, result_rows = result
         render_result(result_rows, result_csv)
+    st.caption('순유출은 입력 기간에 단면을 통해 바다 쪽으로 나간 POC가 들어온 양보다 많았다는 뜻입니다. '
+               '장기 저장량 변화는 퇴적·매몰과 재퇴적 자료를 함께 평가해야 합니다.')
     section_references()
     carbon_reactions()
     st.stop()
@@ -256,7 +258,8 @@ with st.container(horizontal=True, vertical_alignment='center', gap='small', key
     st.markdown('한국해양과학기술원(KIOST)  \n**제13차 차세대 해양과학자 워크숍**')
 st.title('밀물에 들어온 탄소, 썰물에 얼마나 빠져나갈까?')
 st.caption('조석 비대칭성에 따른 비식생 갯벌의 탄소 수송 및 블루카본 저장 안정성 평가')
-st.write('조석 기반 단면 POC 순유출량을 산정해 갯벌 탄소 저장량 평가를 보완합니다.')
+st.markdown('**조석 기반 단면 POC 순유출량 자동 산정 프로그램**')
+st.caption('갯벌을 오가는 입자성 유기탄소(POC)의 유입량과 유출량을 계산해 기존 블루카본 저장량 평가를 보완합니다.')
 st.header('입력값')
 mode = st.segmented_control('입력 방식', (SERIES_MODE, DIRECT_MODE, CSV_MODE), default=SERIES_MODE,
                             required=True, label_visibility='collapsed', key='tidal_section_input_mode', persist_state='session')
