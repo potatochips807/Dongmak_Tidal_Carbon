@@ -4,10 +4,9 @@
 
 ## 계산에 필요한 자료
 
-- 관측 CSV에 같은 단면의 조위, 대표 유속·유향, POC·DOC·DIC 농도(mg C/L)와 각 시간 구간을 기록합니다. Flood·Ebb·Slack으로 조석 단계를 기록합니다.
-- 조위–침수 단면적 CSV는 시간별 조위와 같은 수직 기준면을 사용합니다. 단면적은 표 범위 안에서 선형 보간합니다.
-- 진북 기준의 갯벌 방향 단면 법선 방위각을 지정합니다. 수직 유속의 양수는 갯벌 방향입니다.
-- 대기 CO₂ 플럭스는 µmol CO₂/m²/s, 대표 교환 면적은 m²로 입력합니다. 방출을 양수, 흡수를 음수로 입력합니다. 관측되지 않은 값은 CSV에서 비워 둡니다.
+- 관측 CSV의 필수 열은 `CycleId,DataKind,TideRegime,StartTime,DurationMin,FlowM3S,PocMgL,DataSource`입니다. `StartTime`에는 UTC 오프셋이 있는 ISO 8601 시각을 사용합니다.
+- `FlowM3S`는 단면 유량(m³/s)입니다. 갯벌 방향은 양수, 바다 방향은 음수입니다. `Phase` 열에는 Flood·Ebb·Slack으로 조석 단계를 기록할 수 있습니다.
+- `PocMgL`, `DocMgL`, `DicMgL` 단위는 mg C/L입니다. `AirCo2FluxUmolM2S`는 µmol CO₂/m²/s, `AirExchangeAreaM2`는 m²입니다. 대기 방출은 양수, 흡수는 음수로 기록합니다.
 - 한 화면에서 관측 CSV를 올리고 막대그래프의 유입·유출량(kg C)을 확인합니다. 세 유출 경로의 값을 모두 산정한 경우 가장 큰 경로를 표시합니다.
 
 ## Streamlit Community Cloud 배포

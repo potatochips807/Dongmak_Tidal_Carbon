@@ -23,8 +23,8 @@ def render_budget(row):
         sum_known(row.get(f'{out_prefix}{name}KgC') for name in ('Doc', 'Dic')),
         row.get('OutAirCo2KgC'),
     ]
-    categories = ['밀물 유입', '썰물 + 대기 유출'] if has_tide_phases else ['수중 유입', '세 경로 유출']
-    title = '밀물 유입량과 썰물 유출량' if has_tide_phases else '탄소 유입량과 유출량'
+    categories = ['밀물 수중 유입', '썰물 유출 + 대기'] if has_tide_phases else ['수중 유입', '세 경로 유출']
+    title = '탄소 유입량과 유출량'
     inflow_label = '수중 유입'
     segments, totals = [], []
     for category, values, labels in (
@@ -45,7 +45,8 @@ def render_budget(row):
 
     scale_end = max(item['끝'] for item in totals) or 1
     axis = alt.Scale(domain=[0, scale_end * 1.75], nice=False)
-    y = alt.Y('구분:N', sort=categories, title=None, axis=alt.Axis(labelFontSize=13, labelLimit=134))
+    y = alt.Y('구분:N', sort=categories, title=None,
+              axis=alt.Axis(labelFontSize=13, labelLimit=134, labelPadding=10, ticks=False, domain=False))
     bars = alt.Chart(pd.DataFrame(segments, columns=('구분', '경로', '시작', '끝', '탄소량'))).mark_bar(size=35).encode(
         y=y, x=alt.X('시작:Q', scale=axis, axis=None), x2='끝:Q',
         color=alt.Color('경로:N', scale=alt.Scale(domain=[inflow_label, *PATHWAYS], range=COLORS),
@@ -55,8 +56,9 @@ def render_budget(row):
     labels = alt.Chart(pd.DataFrame(totals)).mark_text(align='left', dx=8, fontSize=14, fontWeight='bold').encode(
         y=y, x=alt.X('끝:Q', scale=axis, axis=None), text='표시값:N',
     )
-    chart = (bars + labels).properties(height=126, title=title)
-    st.altair_chart(chart, width='stretch', alt='수중 유입 한 색과 유출 세 색을 비교하는 가로 막대그래프')
+    chart = (bars + labels).properties(height=126, title=title).configure_view(strokeWidth=0)
+    chart_summary = ' · '.join(f'{item["구분"]} {item["표시값"]}' for item in totals)
+    st.altair_chart(chart, width='stretch', alt=chart_summary)
     if any(value is None for value in outgoing):
         st.metric('가장 큰 유출 경로', '자료 부족', border=True)
     else:
@@ -71,4 +73,4 @@ def render_budget(row):
     if has_tide_phases and outgoing[-1] is not None:
         st.caption('대기 CO₂ 방출량은 입력 기간 전체 기준입니다.')
     if row.get('DataKind') == 'Scenario' or row.get('AreaKind') == 'Scenario':
-        st.caption('가상 입력 또는 가상 단면적을 사용한 결과입니다.')
+        st.caption('가상 입력을 사용한 결과입니다.')

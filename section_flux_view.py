@@ -6,21 +6,12 @@ from pathlib import Path
 
 import streamlit as st
 
-from carbon_budget import BUDGET_COLUMNS
-from section_flux import AREA_COLUMNS, DATA_KINDS, INTERVAL_COLUMNS, integrate_section
+from section_flux import integrate_section
 from tidal_csv import calculate_observation_csv
 
 
 RESULT_KEY = 'inline_carbon_result'
 LEGACY_SCHEMA = Path(__file__).with_name('observations.template.csv')
-
-
-def csv_bytes(columns, rows=()):
-    buffer = StringIO()
-    writer = csv.writer(buffer)
-    writer.writerow(columns)
-    writer.writerows(rows)
-    return buffer.getvalue().encode('utf-8-sig')
 
 
 def csv_headers(payload):
@@ -54,32 +45,15 @@ def clear_result():
 
 
 def section_input():
-    columns = st.columns(2)
-    uploaded = columns[0].file_uploader('관측 CSV 업로드', type='csv', max_upload_size=5, on_change=clear_result)
-    payload = uploaded.getvalue() if uploaded is not None else None
-    legacy = payload is not None and {'Region', 'Direction', 'SectionNormalSpeedMps'} <= csv_headers(payload)
-    area = None if legacy else columns[1].file_uploader(
-        '조위–침수 단면적 CSV', type='csv', max_upload_size=1, on_change=clear_result,
+    uploaded = st.file_uploader(
+        '관측 CSV 업로드', type='csv', max_upload_size=5, on_change=clear_result,
+        help='FlowM3S는 단면 유량(m³/s)입니다. 갯벌 방향은 양수, 바다 방향은 음수로 적습니다.',
     )
-    with st.container(horizontal=True):
-        st.download_button('관측 CSV 양식', csv_bytes((*INTERVAL_COLUMNS, *BUDGET_COLUMNS)),
-                           'section-intervals-template.csv', 'text/csv', on_click='ignore')
-        st.download_button('조위–단면적 CSV 양식', csv_bytes(AREA_COLUMNS),
-                           'section-area-template.csv', 'text/csv', on_click='ignore')
-
-    if payload is None:
+    if uploaded is None or not st.button('탄소 유입·유출량 계산', type='primary'):
         return None
-    if legacy:
-        return legacy_results(payload) if st.button('탄소 유입·유출량 계산', type='primary') else None
-
-    with st.form('section-config'):
-        angle_col, kind_col, source_col = st.columns(3)
-        azimuth = angle_col.number_input('갯벌 방향 법선 방위각 (°)', 0.0, 359.99, 0.0,
-                                         help='진북부터 시계 방향으로 적습니다.')
-        area_kind = kind_col.selectbox('단면적 자료 구분', tuple(DATA_KINDS), format_func=DATA_KINDS.__getitem__)
-        area_source = source_col.text_input('단면적 출처와 조위 기준면')
-        submitted = st.form_submit_button('탄소 유입·유출량 계산', type='primary', disabled=area is None)
-    if submitted:
-        summary, _ = integrate_section(payload, area.getvalue(), azimuth, area_source, area_kind)
-        return summary
-    return None
+    payload = uploaded.getvalue()
+    headers = csv_headers(payload)
+    if 'FlowM3S' not in headers and {'Region', 'Direction', 'SectionNormalSpeedMps'} <= headers:
+        return legacy_results(payload)
+    summary, _ = integrate_section(payload)
+    return summary

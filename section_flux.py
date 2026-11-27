@@ -13,6 +13,8 @@ from tidal_csv import protect_cell
 
 INTERVAL_COLUMNS = ('CycleId', 'DataKind', 'TideRegime', 'StartTime', 'DurationMin',
                     'StageM', 'SpeedMps', 'FlowBearingDeg', 'PocMgL', 'DataSource')
+FLOW_COLUMNS = ('CycleId', 'DataKind', 'TideRegime', 'StartTime', 'DurationMin',
+                'FlowM3S', 'PocMgL', 'DataSource')
 AREA_COLUMNS = ('StageM', 'WettedAreaM2')
 TIDE_REGIMES = {'Spring': '대조기', 'Neap': '소조기', 'Other': '기타'}
 DATA_KINDS = {'Scenario': '가상 입력', 'Observed': '관측 입력'}
@@ -77,17 +79,26 @@ def wetted_area(stage, levels, areas):
     return areas[lower] + fraction * (areas[upper] - areas[lower])
 
 
-def integrate_section(interval_csv, area_csv, landward_bearing, area_source, area_kind='Scenario'):
-    """Use interval-representative inputs. Positive flux points landward."""
-    if not 0 <= landward_bearing < 360:
-        raise ValueError('유입 법선 방위각은 0° 이상 360° 미만이어야 합니다.')
-    if not area_source.strip():
-        raise ValueError('조위–단면적 자료의 출처를 입력하세요.')
-    if area_kind not in DATA_KINDS:
-        raise ValueError('조위–단면적 자료의 구분을 확인하세요.')
-    levels, areas = read_area_curve(area_csv)
+def integrate_section(interval_csv, area_csv=None, landward_bearing=None, area_source='', area_kind='Scenario'):
+    """Integrate measured or estimated section discharge. Positive flow points landward."""
+    use_area = area_csv is not None
+    if use_area:
+        if landward_bearing is None or not 0 <= landward_bearing < 360:
+            raise ValueError('유입 법선 방위각은 0° 이상 360° 미만이어야 합니다.')
+        if not area_source.strip():
+            raise ValueError('조위–단면적 자료의 출처를 입력하세요.')
+        if area_kind not in DATA_KINDS:
+            raise ValueError('조위–단면적 자료의 구분을 확인하세요.')
+        levels, areas = read_area_curve(area_csv)
+    geometry_source = {
+        'LandwardBearingDeg': landward_bearing if use_area else None,
+        'AreaKind': area_kind if use_area else None,
+        'AreaSource': protect_cell(area_source.strip()) if use_area else None,
+    }
+    required_columns = INTERVAL_COLUMNS if use_area else FLOW_COLUMNS
+    optional_columns = BUDGET_COLUMNS if use_area else (*BUDGET_COLUMNS, 'StageM', 'SpeedMps', 'FlowBearingDeg')
     cycles = defaultdict(list)
-    for line, row in read_csv(interval_csv, INTERVAL_COLUMNS, BUDGET_COLUMNS):
+    for line, row in read_csv(interval_csv, required_columns, optional_columns):
         cycle_id, data_kind, regime = row['CycleId'], row['DataKind'], row['TideRegime']
         if not cycle_id or data_kind not in DATA_KINDS or regime not in TIDE_REGIMES:
             raise ValueError(f'{line}행의 CycleId, DataKind, TideRegime을 확인하세요.')
@@ -104,18 +115,24 @@ def integrate_section(interval_csv, area_csv, landward_bearing, area_source, are
             raise ValueError(f'{line}행에 시간대가 있는 ISO 8601 시각과 유효한 지속 시간을 입력하세요.') from None
         if end <= start:
             raise ValueError(f'{line}행의 지속 시간은 0보다 커야 합니다.')
-        bearing = number(row, 'FlowBearingDeg', line, minimum=0)
-        if bearing >= 360:
-            raise ValueError(f'{line}행의 유향은 360° 미만이어야 합니다.')
-        stage = number(row, 'StageM', line)
-        area = wetted_area(stage, levels, areas)
-        speed = number(row, 'SpeedMps', line, minimum=0)
+        geometry = {}
+        if use_area:
+            bearing = number(row, 'FlowBearingDeg', line, minimum=0)
+            if bearing >= 360:
+                raise ValueError(f'{line}행의 유향은 360° 미만이어야 합니다.')
+            stage = number(row, 'StageM', line)
+            area = wetted_area(stage, levels, areas)
+            speed = number(row, 'SpeedMps', line, minimum=0)
+            projection = cos(radians(bearing - landward_bearing))
+            normal_speed = speed * projection if abs(projection) > 1e-14 else 0.0
+            flow = normal_speed * area
+            geometry = {'StageM': stage, 'SpeedMps': speed, 'FlowBearingDeg': bearing,
+                        'NormalSpeedMps': normal_speed, 'WettedAreaM2': area}
+        else:
+            flow = number(row, 'FlowM3S', line)
         poc = number(row, 'PocMgL', line, minimum=0)
-        projection = cos(radians(bearing - landward_bearing))
-        normal_speed = speed * projection if abs(projection) > 1e-14 else 0.0
-        flow = normal_speed * area
         rate = flow * (poc / 1000)
-        if not all(isfinite(value) for value in (area, flow, rate)):
+        if not all(isfinite(value) for value in (flow, rate)):
             raise ValueError(f'{line}행의 값이 계산 범위를 벗어났습니다. 단위를 확인하세요.')
         phase = row.get('Phase') or None
         if phase not in (None, 'Flood', 'Ebb', 'Slack'):
@@ -127,13 +144,11 @@ def integrate_section(interval_csv, area_csv, landward_bearing, area_source, are
         budget = budget_interval(phase, flow, (end - start).total_seconds(), (poc, doc, dic), air_flux, air_area)
         cycles[cycle_id].append((start, end, line, {
             'CycleId': cycle_id, 'DataKind': data_kind, 'TideRegime': regime,
-            'StartTime': timestamp.isoformat(), 'DurationMin': duration, 'StageM': stage,
-            'SpeedMps': speed, 'FlowBearingDeg': bearing, 'LandwardBearingDeg': landward_bearing,
-            'NormalSpeedMps': normal_speed, 'WettedAreaM2': area, 'FlowM3S': flow,
+            'StartTime': timestamp.isoformat(), 'DurationMin': duration, 'FlowM3S': flow,
+            **geometry, **geometry_source,
             'PocMgL': poc, 'DocMgL': doc, 'DicMgL': dic, 'PocFluxKgCS': rate,
             'AirCo2FluxUmolM2S': air_flux, 'AirExchangeAreaM2': air_area, **budget,
-            'DataSource': protect_cell(row['DataSource']), 'AreaKind': area_kind,
-            'AreaSource': protect_cell(area_source.strip()),
+            'DataSource': protect_cell(row['DataSource']),
         }))
 
     summaries, details = [], []
