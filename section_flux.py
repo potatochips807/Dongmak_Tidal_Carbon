@@ -15,6 +15,7 @@ INTERVAL_COLUMNS = ('CycleId', 'DataKind', 'TideRegime', 'StartTime', 'DurationM
                     'StageM', 'SpeedMps', 'FlowBearingDeg', 'PocMgL', 'DataSource')
 FLOW_COLUMNS = ('CycleId', 'DataKind', 'TideRegime', 'StartTime', 'DurationMin',
                 'FlowM3S', 'PocMgL', 'DataSource')
+VELOCITY_COLUMNS = (*FLOW_COLUMNS[:5], 'SectionNormalSpeedMps', 'WettedAreaM2', *FLOW_COLUMNS[6:])
 AREA_COLUMNS = ('StageM', 'WettedAreaM2')
 TIDE_REGIMES = {'Spring': '대조기', 'Neap': '소조기', 'Other': '기타'}
 DATA_KINDS = {'Scenario': '가상 입력', 'Observed': '관측 입력'}
@@ -79,7 +80,9 @@ def wetted_area(stage, levels, areas):
     return areas[lower] + fraction * (areas[upper] - areas[lower])
 
 
-def integrate_section(interval_csv, area_csv=None, landward_bearing=None, area_source='', area_kind='Scenario'):
+def integrate_section(
+    interval_csv, area_csv=None, landward_bearing=None, area_source='', area_kind='Scenario', *, from_velocity=False,
+):
     """Integrate measured or estimated section discharge. Positive flow points landward."""
     use_area = area_csv is not None
     if use_area:
@@ -95,7 +98,7 @@ def integrate_section(interval_csv, area_csv=None, landward_bearing=None, area_s
         'AreaKind': area_kind if use_area else None,
         'AreaSource': protect_cell(area_source.strip()) if use_area else None,
     }
-    required_columns = INTERVAL_COLUMNS if use_area else FLOW_COLUMNS
+    required_columns = INTERVAL_COLUMNS if use_area else VELOCITY_COLUMNS if from_velocity else FLOW_COLUMNS
     optional_columns = BUDGET_COLUMNS if use_area else (*BUDGET_COLUMNS, 'StageM', 'SpeedMps', 'FlowBearingDeg')
     cycles = defaultdict(list)
     for line, row in read_csv(interval_csv, required_columns, optional_columns):
@@ -128,6 +131,11 @@ def integrate_section(interval_csv, area_csv=None, landward_bearing=None, area_s
             flow = normal_speed * area
             geometry = {'StageM': stage, 'SpeedMps': speed, 'FlowBearingDeg': bearing,
                         'NormalSpeedMps': normal_speed, 'WettedAreaM2': area}
+        elif from_velocity:
+            normal_speed = number(row, 'SectionNormalSpeedMps', line)
+            area = number(row, 'WettedAreaM2', line, minimum=0)
+            flow = normal_speed * area
+            geometry = {'NormalSpeedMps': normal_speed, 'WettedAreaM2': area}
         else:
             flow = number(row, 'FlowM3S', line)
         poc = number(row, 'PocMgL', line, minimum=0)

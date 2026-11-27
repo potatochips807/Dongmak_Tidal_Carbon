@@ -14,8 +14,8 @@ from tidal_csv import calculate_observation_csv
 RESULT_KEY = 'inline_carbon_result'
 LEGACY_SCHEMA = Path(__file__).with_name('observations.template.csv')
 DIRECT_EXAMPLES = {
-    'Flood': (360.0, 1.0, (1.0, 2.0, 24.0), 1.0, 10000.0),
-    'Ebb': (360.0, 1.2, (2.0, 3.0, 26.0), 2.0, 10000.0),
+    'Flood': (360.0, 0.10, 10.0, (1.0, 2.0, 24.0), 1.0, 10000.0),
+    'Ebb': (360.0, 0.12, 10.0, (2.0, 3.0, 26.0), 2.0, 10000.0),
 }
 
 
@@ -52,7 +52,8 @@ def clear_result():
 def section_input():
     uploaded = st.file_uploader(
         '관측 CSV 업로드', type='csv', max_upload_size=5, on_change=clear_result,
-        help='FlowM3S는 단면 유량(m³/s)입니다. 갯벌 방향은 양수, 바다 방향은 음수로 적습니다.',
+        help='단면 유량 FlowM3S(m³/s) 또는 단면 수직 유속 SectionNormalSpeedMps(m/s)와 '
+             '침수 단면적 WettedAreaM2(m²)를 입력합니다. 유량 또는 유속은 갯벌 방향이 양수, 바다 방향이 음수입니다.',
     )
     submitted = st.button('탄소 유입·유출량 계산', type='primary', disabled=uploaded is None)
     if uploaded is None or not submitted:
@@ -61,7 +62,8 @@ def section_input():
     headers = csv_headers(payload)
     if 'FlowM3S' not in headers and {'Region', 'Direction', 'SectionNormalSpeedMps'} <= headers:
         return legacy_results(payload)
-    summary, _ = integrate_section(payload)
+    from_velocity = 'FlowM3S' not in headers and 'SectionNormalSpeedMps' in headers
+    summary, _ = integrate_section(payload, from_velocity=from_velocity)
     return summary
 
 
@@ -72,6 +74,7 @@ def direct_input():
     is_scenario = data_kind == 'Scenario'
     if is_scenario:
         st.caption('계산을 확인할 수 있도록 가상 예시값을 채웠습니다. 값을 바꿔 계산할 수 있습니다.')
+    st.caption('단면 유량(m³/s) = 단면 수직 유속(m/s) × 침수 단면적(m²)')
     suffix = '' if is_scenario else '-observed'
     decimal_input = {'step': 0.01, 'format': '%.10g'}
     with st.form('direct-carbon'):
@@ -79,30 +82,35 @@ def direct_input():
         for column, (heading, phase, sign) in zip(
             st.columns(2), (('밀물', 'Flood', 1), ('썰물', 'Ebb', -1)),
         ):
-            defaults = DIRECT_EXAMPLES[phase] if is_scenario else (None, None, (None, None, None), None, None)
-            minutes, flow, carbon, air_flux, area = defaults
+            defaults = DIRECT_EXAMPLES[phase] if is_scenario else (None, None, None, (None, None, None), None, None)
+            minutes, speed, section_area, carbon, air_flux, air_area = defaults
             with column:
                 st.subheader(heading)
                 duration = st.number_input('지속 시간 (분)', min_value=0.01, value=minutes,
                                            key=f'{phase}-minutes{suffix}', **decimal_input)
-                discharge = st.number_input('평균 유량의 크기 (m³/s)', min_value=0.0, value=flow,
-                                            key=f'{phase}-flow{suffix}', **decimal_input)
+                normal_speed = st.number_input(
+                    '평균 단면 수직 유속의 크기 (m/s)', min_value=0.0, value=speed,
+                    key=f'{phase}-speed{suffix}', **decimal_input,
+                    help='단면에 수직인 성분의 크기를 양수로 입력합니다. 앱이 밀물과 썰물의 방향을 적용합니다.',
+                )
+                wetted_area = st.number_input('평균 침수 단면적 (m²)', min_value=0.0, value=section_area,
+                                             key=f'{phase}-section-area{suffix}', **decimal_input)
                 concentrations = tuple(st.number_input(
                     f'{name} 농도 (mg C/L)', min_value=0.0, value=value, key=f'{phase}-{name}{suffix}', **decimal_input,
                 ) for name, value in zip(('POC', 'DOC', 'DIC'), carbon))
                 flux = st.number_input('대기 CO₂ 플럭스 (µmol CO₂/m²/s)', value=air_flux, key=f'{phase}-flux{suffix}',
                                        help='대기로 방출되는 값은 양수, 대기에서 흡수되는 값은 음수입니다.',
                                        **decimal_input)
-                exchange_area = st.number_input('대기 CO₂ 교환 면적 (m²)', min_value=0.0, value=area,
+                exchange_area = st.number_input('대기 CO₂ 교환 면적 (m²)', min_value=0.0, value=air_area,
                                                 key=f'{phase}-air-area{suffix}', **decimal_input)
-                intervals.append((phase, sign, duration, discharge, concentrations, flux, exchange_area))
+                intervals.append((phase, sign, duration, normal_speed, wetted_area, concentrations, flux, exchange_area))
         submitted = st.form_submit_button('탄소 유입·유출량 계산', type='primary')
     if not submitted:
         return None
-    if any(duration is None or discharge is None for _, _, duration, discharge, *_ in intervals):
-        raise ValueError('밀물과 썰물의 지속 시간과 평균 유량을 입력해 주세요.')
+    if any(None in interval[2:5] for interval in intervals):
+        raise ValueError('밀물과 썰물의 지속 시간, 단면 수직 유속과 침수 단면적을 입력해 주세요.')
     budget = summarize_budget([
-        budget_interval(phase, sign * discharge, duration * 60, concentrations, flux, exchange_area)
-        for phase, sign, duration, discharge, concentrations, flux, exchange_area in intervals
+        budget_interval(phase, sign * speed * area, duration * 60, concentrations, flux, exchange_area)
+        for phase, sign, duration, speed, area, concentrations, flux, exchange_area in intervals
     ])
     return [{**budget, 'CycleId': '관측 입력', 'DataKind': data_kind}]
