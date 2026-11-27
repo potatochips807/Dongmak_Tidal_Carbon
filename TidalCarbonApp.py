@@ -15,11 +15,11 @@ with st.container(horizontal=True, vertical_alignment='center', gap='small'):
 st.title('밀물에 들어온 탄소, 썰물에 얼마나 빠져나갈까?')
 st.header('입력값')
 mode = st.segmented_control(
-    '입력 방식', ('관측 CSV 업로드', '직접 입력'), default='관측 CSV 업로드',
+    '입력 방식', ('관측 CSV 업로드', '관측 입력'), default='관측 CSV 업로드',
     required=True, on_change=clear_result,
 )
 try:
-    calculated = direct_input() if mode == '직접 입력' else section_input()
+    calculated = direct_input() if mode == '관측 입력' else section_input()
 except ValueError as error:
     st.session_state.pop(RESULT_KEY, None)
     st.error(str(error))

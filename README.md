@@ -7,7 +7,7 @@
 - 관측 CSV의 필수 열은 `CycleId,DataKind,TideRegime,StartTime,DurationMin,FlowM3S,PocMgL,DataSource`입니다. `StartTime`에는 UTC 오프셋이 있는 ISO 8601 시각을 사용합니다.
 - `FlowM3S`는 단면 유량(m³/s)입니다. 갯벌 방향은 양수, 바다 방향은 음수입니다. `Phase` 열에는 Flood·Ebb·Slack으로 조석 단계를 기록할 수 있습니다.
 - `PocMgL`, `DocMgL`, `DicMgL` 단위는 mg C/L입니다. `AirCo2FluxUmolM2S`는 µmol CO₂/m²/s, `AirExchangeAreaM2`는 m²입니다. 대기 방출은 양수, 흡수는 음수로 기록합니다.
-- 직접 입력에서는 밀물·썰물별 지속 시간, 평균 유량의 크기, 탄소 농도와 대기 CO₂ 값을 입력합니다. 관측 CSV와 직접 입력은 같은 막대그래프에 유입·유출량(kg C)을 표시합니다. 세 유출 경로의 값을 모두 산정한 경우 가장 큰 경로를 표시합니다.
+- 관측 입력에서는 밀물·썰물별 지속 시간, 평균 유량의 크기, 탄소 농도와 대기 CO₂ 값을 소수로 입력할 수 있습니다. 두 입력 방식 모두 막대그래프에 유입·유출량(kg C)을 표시합니다. 세 유출 경로의 값을 모두 산정한 경우 가장 큰 경로를 표시합니다.
 
 ## Streamlit Community Cloud 배포
 

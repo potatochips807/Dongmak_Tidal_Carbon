@@ -14,8 +14,8 @@ from tidal_csv import calculate_observation_csv
 RESULT_KEY = 'inline_carbon_result'
 LEGACY_SCHEMA = Path(__file__).with_name('observations.template.csv')
 DIRECT_EXAMPLES = {
-    'Flood': (360, 1.0, (1.0, 2.0, 24.0), 1.0, 10000.0),
-    'Ebb': (360, 1.2, (2.0, 3.0, 26.0), 2.0, 10000.0),
+    'Flood': (360.0, 1.0, (1.0, 2.0, 24.0), 1.0, 10000.0),
+    'Ebb': (360.0, 1.2, (2.0, 3.0, 26.0), 2.0, 10000.0),
 }
 
 
@@ -66,12 +66,14 @@ def section_input():
 
 
 def direct_input():
-    data_kind = st.selectbox('자료 구분', tuple(DATA_KINDS), format_func=DATA_KINDS.__getitem__,
+    labels = {**DATA_KINDS, 'Observed': '실측 자료'}
+    data_kind = st.selectbox('자료 구분', tuple(labels), format_func=labels.__getitem__,
                              on_change=clear_result)
     is_scenario = data_kind == 'Scenario'
     if is_scenario:
         st.caption('계산을 확인할 수 있도록 가상 예시값을 채웠습니다. 값을 바꿔 계산할 수 있습니다.')
     suffix = '' if is_scenario else '-observed'
+    decimal_input = {'step': 0.01, 'format': '%.10g'}
     with st.form('direct-carbon'):
         intervals = []
         for column, (heading, phase, sign) in zip(
@@ -81,16 +83,18 @@ def direct_input():
             minutes, flow, carbon, air_flux, area = defaults
             with column:
                 st.subheader(heading)
-                duration = st.number_input('지속 시간 (분)', min_value=1, value=minutes, key=f'{phase}-minutes{suffix}')
+                duration = st.number_input('지속 시간 (분)', min_value=0.01, value=minutes,
+                                           key=f'{phase}-minutes{suffix}', **decimal_input)
                 discharge = st.number_input('평균 유량의 크기 (m³/s)', min_value=0.0, value=flow,
-                                            key=f'{phase}-flow{suffix}')
+                                            key=f'{phase}-flow{suffix}', **decimal_input)
                 concentrations = tuple(st.number_input(
-                    f'{name} 농도 (mg C/L)', min_value=0.0, value=value, key=f'{phase}-{name}{suffix}',
+                    f'{name} 농도 (mg C/L)', min_value=0.0, value=value, key=f'{phase}-{name}{suffix}', **decimal_input,
                 ) for name, value in zip(('POC', 'DOC', 'DIC'), carbon))
                 flux = st.number_input('대기 CO₂ 플럭스 (µmol CO₂/m²/s)', value=air_flux, key=f'{phase}-flux{suffix}',
-                                       help='대기로 방출되는 값은 양수, 대기에서 흡수되는 값은 음수입니다.')
+                                       help='대기로 방출되는 값은 양수, 대기에서 흡수되는 값은 음수입니다.',
+                                       **decimal_input)
                 exchange_area = st.number_input('대기 CO₂ 교환 면적 (m²)', min_value=0.0, value=area,
-                                                key=f'{phase}-air-area{suffix}')
+                                                key=f'{phase}-air-area{suffix}', **decimal_input)
                 intervals.append((phase, sign, duration, discharge, concentrations, flux, exchange_area))
         submitted = st.form_submit_button('탄소 유입·유출량 계산', type='primary')
     if not submitted:
@@ -101,4 +105,4 @@ def direct_input():
         budget_interval(phase, sign * discharge, duration * 60, concentrations, flux, exchange_area)
         for phase, sign, duration, discharge, concentrations, flux, exchange_area in intervals
     ])
-    return [{**budget, 'CycleId': '직접 입력', 'DataKind': data_kind}]
+    return [{**budget, 'CycleId': '관측 입력', 'DataKind': data_kind}]
