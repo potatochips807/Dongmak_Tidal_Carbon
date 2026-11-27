@@ -36,4 +36,4 @@ if rows:
     else:
         render_budget(row)
 else:
-    st.caption('관측 CSV를 올려 계산하면 여기에 결과가 표시됩니다.')
+    render_budget()

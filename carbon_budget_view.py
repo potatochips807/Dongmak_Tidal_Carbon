@@ -14,7 +14,10 @@ COLORS = ['#256d9b', '#b55c1d', '#21806d', '#8c5599']
 WATER_TYPES = ('Poc', 'Doc', 'Dic')
 
 
-def render_budget(row):
+def render_budget(row=None):
+    waiting_for_data = row is None
+    if waiting_for_data:
+        row = {}
     has_tide_phases = row.get('FloodInPocKgC') is not None and row.get('EbbOutPocKgC') is not None
     in_prefix, out_prefix = ('FloodIn', 'EbbOut') if has_tide_phases else ('In', 'Out')
     incoming = [row.get(f'{in_prefix}{name}KgC') for name in WATER_TYPES]
@@ -38,7 +41,7 @@ def render_budget(row):
         ends = list(accumulate((value for value, _ in known), initial=0.0))
         for (_, label), start, end in zip(known, ends, ends[1:]):
             segments.append({'구분': category, '경로': label, '시작': start, '끝': end, '탄소량': end - start})
-        text = f'{total:,.6g} kg C' if known else '자료 부족'
+        text = f'{total:,.6g} kg C' if known else '계산 대기' if waiting_for_data else '자료 부족'
         if known and len(values) != sum(value is not None for value in values):
             text = f'확인분 {text}'
         totals.append({'구분': category, '끝': total, '표시값': text})
@@ -59,7 +62,9 @@ def render_budget(row):
     chart = (bars + labels).properties(height=126, title=title).configure_view(strokeWidth=0)
     chart_summary = ' · '.join(f'{item["구분"]} {item["표시값"]}' for item in totals)
     st.altair_chart(chart, width='stretch', alt=chart_summary)
-    if any(value is None for value in outgoing):
+    if waiting_for_data:
+        st.metric('가장 큰 유출 경로', '계산 대기', border=True)
+    elif any(value is None for value in outgoing):
         st.metric('가장 큰 유출 경로', '자료 부족', border=True)
     else:
         total_out = sum_known(outgoing)

@@ -49,7 +49,8 @@ def section_input():
         '관측 CSV 업로드', type='csv', max_upload_size=5, on_change=clear_result,
         help='FlowM3S는 단면 유량(m³/s)입니다. 갯벌 방향은 양수, 바다 방향은 음수로 적습니다.',
     )
-    if uploaded is None or not st.button('탄소 유입·유출량 계산', type='primary'):
+    submitted = st.button('탄소 유입·유출량 계산', type='primary', disabled=uploaded is None)
+    if uploaded is None or not submitted:
         return None
     payload = uploaded.getvalue()
     headers = csv_headers(payload)
